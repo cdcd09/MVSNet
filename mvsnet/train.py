@@ -1,10 +1,36 @@
+
+from __future__ import print_function
 #!/usr/bin/env python
 """
 Copyright 2019, Yao Yao, HKUST.
 Training script.
 """
 
-from __future__ import print_function
+'''
+
+python train.py --regularization '3DCNNs' --train_dtu --max_w 640 --max_h 512 --max_d 128
+
+#논문기준 100,000 iterations        /1epoch = 2시간
+train_n = 27097 BS=2 Gpunum=4   27097/(2*4)=3388   100000/3388=29.53 epoch
+//regularization GRU 사용시 train_n=54194 BS=2 Gpunum=4   54194/(2*4)=6774   100000/6774=14.76 epoch
+//  -> GRU는 정규화 과정에서 backward/forward 각 샘플이 한번씩 총 두 번 사용
+
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 python train.py \
+  --train_dtu \
+  --num_gpus 4 \
+  --dtu_data_root /data/dtu/mvs_training/dtu \
+  --regularization 3DCNNs \
+  --max_w 640 --max_h 512 --max_d 256 \
+  --view_num 3 \
+  --batch_size 2 \
+  --epoch 15 \
+  --base_lr 0.001 \
+  --log_folder /data/tf_log \
+  --model_folder /data/tf_model
+
+'''
+
 
 import os
 import time
@@ -12,6 +38,7 @@ import sys
 import math
 import argparse
 from random import randint
+import random
 
 import cv2
 import numpy as np
@@ -93,6 +120,12 @@ tf.app.flags.DEFINE_boolean('online_augmentation', False,
 
 FLAGS = tf.app.flags.FLAGS
 
+# Python 2/3 compatibility: define xrange on Python 3
+try:
+    xrange
+except NameError:  # Python 3
+    xrange = range
+
 
 def online_augmentation(image, random_order=True):
     primitives = photaug.augmentations
@@ -143,7 +176,8 @@ class MVSGenerator:
                     cam = load_cam(open(data[2 * view + 1]))
                     images.append(image)
                     cams.append(cam)
-                depth_image = load_pfm(open(data[2 * self.view_num]))
+                # open PFM in binary mode to avoid UnicodeDecodeError when reading header
+                depth_image = load_pfm(open(data[2 * self.view_num], 'rb'))
 
                 # dataset specified process
                 if FLAGS.train_blendedmvs:
@@ -366,6 +400,9 @@ def train(traning_list):
             # initialization
             total_step = 0
             sess.run(init_op)
+            # ensure log folder exists
+            if not os.path.exists(FLAGS.log_folder):
+                os.makedirs(FLAGS.log_folder, exist_ok=True)
             summary_writer = tf.summary.FileWriter(FLAGS.log_folder, sess.graph)
 
             # load pre-trained model
@@ -408,8 +445,9 @@ def train(traning_list):
                     # save the model checkpoint periodically
                     if (total_step % FLAGS.snapshot == 0 or step == (training_sample_size - 1)):
                         model_folder = os.path.join(FLAGS.model_folder, FLAGS.regularization)
+                        # make sure the directory exists (create parents if needed)
                         if not os.path.exists(model_folder):
-                            os.mkdir(model_folder)
+                            os.makedirs(model_folder, exist_ok=True)
                         ckpt_path = os.path.join(model_folder, 'model.ckpt')
                         print(Notify.INFO, 'Saving model to %s' % ckpt_path, Notify.ENDC)
                         saver.save(sess, ckpt_path, global_step=total_step)
@@ -419,14 +457,26 @@ def train(traning_list):
 def main(argv=None):  # pylint: disable=unused-argument
     """ program entrance """
     # Prepare all training samples
+    sample_list = []
+    selected = []
+    # Collect datasets based on flags (accumulate if multiple are set)
     if FLAGS.train_blendedmvs:
-        sample_list = gen_blendedmvs_path(FLAGS.blendedmvs_data_root, mode='training_mvs')
+        selected.append('blendedmvs')
+        sample_list.extend(gen_blendedmvs_path(FLAGS.blendedmvs_data_root, mode='training_mvs'))
     if FLAGS.train_blendedmvg:
-        sample_list = gen_blendedmvs_path(FLAGS.blendedmvs_data_root, mode='training_mvg')
+        selected.append('blendedmvg')
+        sample_list.extend(gen_blendedmvs_path(FLAGS.blendedmvs_data_root, mode='training_mvg'))
     if FLAGS.train_dtu:
-        sample_list = gen_dtu_resized_path(FLAGS.dtu_data_root)
+        selected.append('dtu')
+        sample_list.extend(gen_dtu_resized_path(FLAGS.dtu_data_root))
     if FLAGS.train_eth3d:
-        sample_list = gen_eth3d_path(FLAGS.eth3d_data_root, mode='training')
+        selected.append('eth3d')
+        sample_list.extend(gen_eth3d_path(FLAGS.eth3d_data_root, mode='training'))
+    # Validate selection vs. content
+    if not selected:
+        raise ValueError('No training dataset flag set. Use one of --train_dtu, --train_blendedmvs, --train_blendedmvg, or --train_eth3d.')
+    if not sample_list:
+        raise ValueError('No samples found for selected datasets %s. Check paths, e.g., --dtu_data_root should contain Cameras/pair.txt and Rectified/scan*_train.' % selected)
     # Shuffle
     random.shuffle(sample_list)
     # Training entrance.

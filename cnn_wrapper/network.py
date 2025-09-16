@@ -17,6 +17,12 @@ from tools.common import Notify
 
 DEFAULT_PADDING = 'SAME'
 
+# Python 3 compatibility shims
+try:
+    basestring
+except NameError:  # Python 3
+    basestring = str
+
 
 def layer(op):
     """Decorator for composable network layers."""
@@ -90,7 +96,7 @@ class Network(object):
         session: The current TensorFlow session
         ignore_missing: If true, serialized weights for missing layers are ignored.
         '''
-        data_dict = np.load(data_path).item()
+        data_dict = np.load(data_path, allow_pickle=True).item()
         if exclude_var is not None:
             keyword = exclude_var.split(',')
         assign_op = []
@@ -104,7 +110,7 @@ class Network(object):
                     continue
 
             with tf.variable_scope(op_name, reuse=True):
-                for param_name, data in data_dict[op_name].iteritems():
+                for param_name, data in data_dict[op_name].items():
 
                     try:
                         var = tf.get_variable(param_name)
@@ -231,7 +237,7 @@ class Network(object):
         H = shape[2]
         W = shape[3]
         if channel_wise:
-            G = max(1, C / group_channel)
+            G = max(1, C // group_channel)
         else:
             G = min(group, C)
 
@@ -361,7 +367,7 @@ class Network(object):
         H = shape[2]
         W = shape[3]
         if channel_wise:
-            G = max(1, C / group_channel)
+            G = max(1, C // group_channel)
         else:
             G = min(group, C)
 

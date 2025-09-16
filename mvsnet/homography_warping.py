@@ -17,11 +17,17 @@ def get_homographies(left_cam, right_cam, depth_num, depth_start, depth_interval
         K_left = tf.slice(left_cam, [0, 1, 0, 0], [-1, 1, 3, 3])
         K_right = tf.slice(right_cam, [0, 1, 0, 0], [-1, 1, 3, 3])
 
-        # depth 
-        depth_num = tf.reshape(tf.cast(depth_num, 'int32'), [])
-        depth = depth_start + tf.cast(tf.range(depth_num), tf.float32) * depth_interval
+        # depth
+        # Create per-batch depth samples with shape [B, D]
+        depth_num = tf.reshape(tf.cast(depth_num, 'int32'), [])  # scalar D
+        batch_size = tf.shape(R_left)[0]
+        rng = tf.cast(tf.range(depth_num), tf.float32)                 # [D]
+        rng = tf.reshape(rng, [1, depth_num])                          # [1, D]
+        ds = tf.reshape(tf.cast(depth_start, tf.float32), [-1, 1])     # [B, 1]
+        di = tf.reshape(tf.cast(depth_interval, tf.float32), [-1, 1])  # [B, 1]
+        depth = ds + rng * di                                          # [B, D]
         # preparation
-        num_depth = tf.shape(depth)[0]
+        num_depth = tf.shape(depth)[1]
         K_left_inv = tf.matrix_inverse(tf.squeeze(K_left, axis=1))
         R_left_trans = tf.transpose(tf.squeeze(R_left, axis=1), perm=[0, 2, 1])
         R_right_trans = tf.transpose(tf.squeeze(R_right, axis=1), perm=[0, 2, 1])
@@ -33,7 +39,6 @@ def get_homographies(left_cam, right_cam, depth_num, depth_start, depth_interval
         c_relative = tf.subtract(c_right, c_left)        
 
         # compute
-        batch_size = tf.shape(R_left)[0]
         temp_vec = tf.matmul(c_relative, fronto_direction)
         depth_mat = tf.tile(tf.reshape(depth, [batch_size, num_depth, 1, 1]), [1, 1, 3, 3])
 
@@ -60,16 +65,21 @@ def get_homographies_inv_depth(left_cam, right_cam, depth_num, depth_start, dept
         K_left = tf.slice(left_cam, [0, 1, 0, 0], [-1, 1, 3, 3])
         K_right = tf.slice(right_cam, [0, 1, 0, 0], [-1, 1, 3, 3])
 
-        # depth 
-        depth_num = tf.reshape(tf.cast(depth_num, 'int32'), [])
-
-        inv_depth_start = tf.reshape(tf.div(1.0, depth_start), [])
-        inv_depth_end = tf.reshape(tf.div(1.0, depth_end), [])
-        inv_depth = tf.lin_space(inv_depth_start, inv_depth_end, depth_num)
-        depth = tf.div(1.0, inv_depth)
+        # depth (inverse-depth sampling), batched
+        depth_num = tf.reshape(tf.cast(depth_num, 'int32'), [])  # scalar D
+        batch_size = tf.shape(R_left)[0]
+        ds = tf.reshape(tf.cast(depth_start, tf.float32), [-1, 1])  # [B,1]
+        de = tf.reshape(tf.cast(depth_end, tf.float32), [-1, 1])    # [B,1]
+        inv_ds = 1.0 / ds                                           # [B,1]
+        inv_de = 1.0 / de                                           # [B,1]
+        t = tf.cast(tf.range(depth_num), tf.float32)
+        denom = tf.cast(tf.maximum(depth_num - 1, 1), tf.float32)
+        t = tf.reshape(t / denom, [1, depth_num])                   # [1,D] in [0,1]
+        inv_depth = inv_ds + (inv_de - inv_ds) * t                  # [B,D]
+        depth = 1.0 / inv_depth                                     # [B,D]
 
         # preparation
-        num_depth = tf.shape(depth)[0]
+        num_depth = tf.shape(depth)[1]
         K_left_inv = tf.matrix_inverse(tf.squeeze(K_left, axis=1))
         R_left_trans = tf.transpose(tf.squeeze(R_left, axis=1), perm=[0, 2, 1])
         R_right_trans = tf.transpose(tf.squeeze(R_right, axis=1), perm=[0, 2, 1])
@@ -81,7 +91,6 @@ def get_homographies_inv_depth(left_cam, right_cam, depth_num, depth_start, dept
         c_relative = tf.subtract(c_right, c_left)        
 
         # compute
-        batch_size = tf.shape(R_left)[0]
         temp_vec = tf.matmul(c_relative, fronto_direction)
         depth_mat = tf.tile(tf.reshape(depth, [batch_size, num_depth, 1, 1]), [1, 1, 3, 3])
 

@@ -1,0 +1,26 @@
+# Python cache and builds
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+
+# Environments
+.env
+.venv
+.envrc
+
+# Editors
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Project-specific artifacts
+mvsnet/--*
+mvsnet/python
+
+# Logs/Models (adjust if you track these elsewhere)
+tf_log/
+tf_model/
