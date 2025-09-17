@@ -24,3 +24,6 @@ mvsnet/python
 # Logs/Models (adjust if you track these elsewhere)
 tf_log/
 tf_model/
+
+#ckpt
+tf_model_dtu_*

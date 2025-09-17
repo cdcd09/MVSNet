@@ -1,10 +1,15 @@
-#!/usr/bin/env python
+from __future__ import print_function
 """
 Copyright 2020, Yao Yao, HKUST.
 Validatation script.
 """
 
-from __future__ import print_function
+
+
+
+
+
+
 
 import os
 import time
@@ -22,6 +27,27 @@ from tools.common import Notify
 from preprocess import *
 from model import *
 from loss import *
+
+"""
+
+python validate.py --regularization '3DCNNs' --validate_set dtu --max_w 640 --max_h 512 --max_d 128 \
+--pretrained_model_ckpt_path /data/tf_model/3DCNNs/DTU/dtu_augmented/model.ckpt --ckpt_step 150000
+
+##논문에서 train view_num=3, validate view_num=5
+
+python validate.py \
+  --regularization 3DCNNs \
+  --validate_set dtu \
+  --dtu_data_root /data/dtu/mvs_training/dtu \
+  --view_num 5 \
+  --max_w 1600 --max_h 1184 --max_d 256 \
+  --pretrained_model_ckpt_path /data/ckpt/model.ckpt \
+  --ckpt_step 150000 \
+  --validation_result_path output/validation_results.txt
+
+"""
+
+
 
 # params for datasets
 tf.app.flags.DEFINE_string('blendedmvs_data_root', '/data/BlendedMVS/dataset_low_res', 
@@ -88,7 +114,7 @@ class MVSGenerator:
                     cam[1, 3, 2] = FLAGS.max_d
                     images.append(image)
                     cams.append(cam)
-                depth_image = load_pfm(open(data[2 * self.view_num]))
+                depth_image = load_pfm(open(data[2 * self.view_num], 'rb'))
 
                 if FLAGS.validate_set == 'eth3d':
                     # crop to fit the network
@@ -221,6 +247,10 @@ def validate_mvsnet(mvs_list):
         print ('ave_loss', ave_loss)
         print ('ave_per1', ave_per1)
         print ('ave_per3', ave_per3)
+        # ensure validation result folder exists
+        vr_dir = os.path.dirname(FLAGS.validation_result_path)
+        if vr_dir and not os.path.exists(vr_dir):
+            os.makedirs(vr_dir, exist_ok=True)
         with open(FLAGS.validation_result_path, 'a') as log_file:
             log_file.write('Model check point %d, L1 loss = %f, < 1 = %f, < 3 = %f \n' 
                            % (int(FLAGS.ckpt_step), float(ave_loss), float(ave_per1), float(ave_per3)))
