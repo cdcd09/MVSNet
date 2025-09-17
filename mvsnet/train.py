@@ -10,7 +10,7 @@ Training script.
 
 python train.py --regularization '3DCNNs' --train_dtu --max_w 640 --max_h 512 --max_d 128
 
-#논문기준 100,000 iterations        /1epoch = 2시간
+#논문기준 100,000 iterations        /1epoch = 3시간
 train_n = 27097 BS=2 Gpunum=4   27097/(2*4)=3388   100000/3388=29.53 epoch
 //regularization GRU 사용시 train_n=54194 BS=2 Gpunum=4   54194/(2*4)=6774   100000/6774=14.76 epoch
 //  -> GRU는 정규화 과정에서 backward/forward 각 샘플이 한번씩 총 두 번 사용
@@ -39,6 +39,7 @@ import math
 import argparse
 from random import randint
 import random
+import signal
 
 import cv2
 import numpy as np
@@ -272,6 +273,23 @@ def average_gradients(tower_grads):
 
 def train(traning_list):
     """ training mvsnet """
+    # graceful stop flag
+    stop_training = {'value': False}
+
+    def _handle_stop(signum, frame):
+        stop_training['value'] = True
+        try:
+            print(Notify.WARN, 'Received signal %s: will save and stop after current step.' % signum, Notify.ENDC)
+        except Exception:
+            pass
+
+    # catch SIGTERM (docker stop) and SIGINT (Ctrl+C)
+    try:
+        signal.signal(signal.SIGTERM, _handle_stop)
+        signal.signal(signal.SIGINT, _handle_stop)
+    except Exception:
+        # signal handling may not be available on some platforms
+        pass
     training_sample_size = len(traning_list)
     if FLAGS.regularization == 'GRU':
         training_sample_size = training_sample_size * 2
@@ -420,6 +438,7 @@ def train(traning_list):
                 # training of one epoch
                 step = 0
                 sess.run(training_iterator.initializer)
+                early_stop = False
                 for _ in range(int(training_sample_size / FLAGS.num_gpus)):
 
                     # run one batch
@@ -430,6 +449,15 @@ def train(traning_list):
                     except tf.errors.OutOfRangeError:
                         print("End of dataset")  # ==> "End of dataset"
                         break
+                    except Exception as e:
+                        # unexpected error: try to save and re-raise or exit
+                        model_folder = os.path.join(FLAGS.model_folder, FLAGS.regularization)
+                        if not os.path.exists(model_folder):
+                            os.makedirs(model_folder, exist_ok=True)
+                        ckpt_path = os.path.join(model_folder, 'model.ckpt')
+                        print(Notify.FAIL, 'Unexpected error: %s. Saving checkpoint to %s and exiting.' % (str(e), ckpt_path), Notify.ENDC)
+                        saver.save(sess, ckpt_path, global_step=total_step)
+                        raise
                     duration = time.time() - start_time
 
                     # print info
@@ -451,8 +479,22 @@ def train(traning_list):
                         ckpt_path = os.path.join(model_folder, 'model.ckpt')
                         print(Notify.INFO, 'Saving model to %s' % ckpt_path, Notify.ENDC)
                         saver.save(sess, ckpt_path, global_step=total_step)
+                    # check for graceful stop request
+                    if stop_training['value']:
+                        model_folder = os.path.join(FLAGS.model_folder, FLAGS.regularization)
+                        if not os.path.exists(model_folder):
+                            os.makedirs(model_folder, exist_ok=True)
+                        ckpt_path = os.path.join(model_folder, 'model.ckpt')
+                        print(Notify.WARN, 'Stop requested: saving model to %s and exiting.' % ckpt_path, Notify.ENDC)
+                        saver.save(sess, ckpt_path, global_step=total_step)
+                        early_stop = True
+                        break
+
                     step += FLAGS.batch_size * FLAGS.num_gpus
                     total_step += FLAGS.batch_size * FLAGS.num_gpus
+
+                if early_stop:
+                    break
 
 def main(argv=None):  # pylint: disable=unused-argument
     """ program entrance """
