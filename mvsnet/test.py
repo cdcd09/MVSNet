@@ -23,6 +23,22 @@ from preprocess import *
 from model import *
 from loss import *
 
+
+
+'''
+
+python test.py \
+  --dense_folder /data/dtu/dtu_eval/scan1 \
+  --pretrained_model_ckpt_path /data/ckpt/model.ckpt \
+  --ckpt_step 150000 \
+  --view_num 5 \
+  --max_d 256 \
+  --max_w 1600 \
+  --max_h 1152 \
+  --regularization 3DCNNs \
+  --inverse_depth False \
+  --adaptive_scaling True
+'''
 # input path
 tf.app.flags.DEFINE_string('dense_folder', None, 
                            """Root path to dense folder.""")
@@ -81,9 +97,11 @@ class MVSGenerator:
                 selected_view_num = int(len(data) / 2)
 
                 for view in range(min(self.view_num, selected_view_num)):
-                    image_file = file_io.FileIO(data[2 * view], mode='r')
-                    image = scipy.misc.imread(image_file, mode='RGB')
-                    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+                    # Use cv2 for more robust image reading
+                    image = cv2.imread(data[2 * view])
+                    if image is None:
+                        print(f"Warning: Could not read image {data[2 * view]}")
+                        continue
                     cam_file = file_io.FileIO(data[2 * view + 1], mode='r')
                     cam = load_cam(cam_file, FLAGS.interval_scale)
                     if cam[1][3][2] == 0:

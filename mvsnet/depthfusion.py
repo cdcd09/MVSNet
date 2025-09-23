@@ -23,6 +23,27 @@ import numpy as np
 import pylab as plt
 from preprocess import * 
 
+
+
+'''
+python depthfusion.py \
+--dense_folder /data/dtu/dtu_eval/scan1 \
+--fusibile_exe_path /workspace/fusibile/build/fusibile \
+--prob_threshold 0.8 \
+--disp_threshold 0.5 \
+--num_consistent 3
+  
+  python depthfusion.py \
+  --testpath ./outputs/scan1 \
+  --fusibile_exe ./fusibile/build/fusibile \
+  --outdir ./outputs/scan1/fused \
+  --prob_threshold 0.8 \            확률 0.8 이하 제거
+  --consistency 3 \             최소 3view에서 일관된 픽셀만 유지
+  --disp_threshold 1.0          depth 차이 1.0 이상 제거
+
+
+
+'''
 def read_gipuma_dmb(path):
     '''read Gipuma .dmb format image'''
 
@@ -63,7 +84,7 @@ def write_gipuma_dmb(path, image):
 def mvsnet_to_gipuma_dmb(in_path, out_path):
     '''convert mvsnet .pfm output to Gipuma .dmb format'''
     
-    image = load_pfm(open(in_path))
+    image = load_pfm(open(in_path, 'rb'))
     write_gipuma_dmb(out_path, image)
 
     return 
@@ -170,8 +191,8 @@ def probability_filter(dense_folder, prob_threshold):
         out_depth_map_path = os.path.join(depth_folder, image_prefix+'_prob_filtered.pfm')
 
 
-        depth_map = load_pfm(open(init_depth_map_path))
-        prob_map = load_pfm(open(prob_map_path))
+        depth_map = load_pfm(open(init_depth_map_path, 'rb'))
+        prob_map = load_pfm(open(prob_map_path, 'rb'))
         depth_map[prob_map < prob_threshold] = 0
         write_pfm(out_depth_map_path, depth_map)
 

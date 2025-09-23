@@ -1,0 +1,23 @@
+ckpt 150000 | L1(step)=3.789573, <1=0.769022, <3=0.880974, MAE(m)=0.009474, MAE(mm)=9.47
+
+
+
+L1(step)=3.789573
+
+//
+L1 regression loss (depth interval 단위)    1depth interval =2.5mm
+depth map 예측과 ground truth 간의 평균 절대 오차
+
+
+<1=0.769022:
+1-pixel accuracy (76.9%)
+예측 depth가 ground truth와 1 depth interval 이내 차이인 픽셀 비율
+
+
+<3=0.880974:
+3-pixel accuracy (88.1%)
+예측 depth가 ground truth와 3 depth interval 이내 차이인 픽셀 비율
+
+MAE(m)=0.009474:
+Mean Absolute Error in meters (약 9.5mm)
+실제 물리적 거리 단위의 평균 절대 오차

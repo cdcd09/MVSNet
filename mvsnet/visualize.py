@@ -10,7 +10,12 @@ import argparse
 import matplotlib.pyplot as plt
 from preprocess import load_pfm
 from depthfusion import read_gipuma_dmb
+'''
 
+python visualize.py /data/dtu/dtu_eval/scan1/depths_mvsnet/00000013_prob_filtered.pfm
+
+
+'''
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('depth_path')
@@ -26,7 +31,18 @@ if __name__ == '__main__':
         depth_image = load_pfm(open(depth_path, 'rb'))
         ma = np.ma.masked_equal(depth_image, 0.0, copy=False)
         print('value range: ', ma.min(), ma.max())
+        
+        # 이미지 저장
+        plt.figure(figsize=(10, 8))
         plt.imshow(depth_image, 'rainbow')
+        plt.colorbar()
+        plt.title(f'Depth Map: {depth_path}')
+        
+        # 저장 경로 생성
+        output_path = depth_path.replace('.pfm', '_visualization.png')
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        print(f'Saved visualization to: {output_path}')
+        
         plt.show()
     elif depth_path.endswith('dmb'):
         depth_image = read_gipuma_dmb(depth_path)

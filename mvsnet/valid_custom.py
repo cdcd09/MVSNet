@@ -1,6 +1,17 @@
 #!/usr/bin/env python
 """
-Custom validation script that does NOT modify the original validate.py.
+Custom validation scriparser.add_argument('--dtu_data_root', type=str, default='/data/dtu/mvs_training/dtu')
+parser.add_argument('--validate_set', type=str, default='dtu', choices=['dtu','blendedmvs','eth3d'])
+parser.add_argument('--view_num', type=int, default=5)
+parser.add_argument('--max_d', type=int, default=256)
+parser.add_argument('--max_w', type=int, default=1600)
+parser.add_argument('--max_h', type=int, default=1184)
+parser.add_argument('--sample_scale', type=float, default=0.25)
+parser.add_argument('--interval_scale', type=float, default=1.0)
+parser.add_argument('--batch_size', type=int, default=1)
+parser.add_argument('--inverse_depth', action='store_true')
+parser.add_argument('--regularization', type=str, default='3DCNNs', choices=['3DCNNs','GRU'])
+parser.add_argument('--pretrained_model_ckpt_path', type=str, default='/data/ckpt/model.ckpt') NOT modify the original validate.py.
 - Adds absolute MAE metrics (meters/mm)
 - Opens PFM in binary mode
 - Ensures validation result directory exists
@@ -57,7 +68,7 @@ parser.add_argument('--interval_scale', type=float, default=1.0)
 parser.add_argument('--batch_size', type=int, default=1)
 parser.add_argument('--inverse_depth', action='store_true')
 parser.add_argument('--regularization', type=str, default='3DCNNs', choices=['3DCNNs','GRU'])
-parser.add_argument('--pretrained_model_ckpt_path', type=str, default='/home/junho/dataset/tf_model/3DCNNs/model.ckpt')
+parser.add_argument('--pretrained_model_ckpt_path', type=str, default='/home/junho/dataset/ckpt/model.ckpt')
 parser.add_argument('--ckpt_step', type=int, default=85000)
 parser.add_argument('--validation_result_path', type=str, default='output/validation_results_custom.txt')
 args = parser.parse_args()
@@ -187,7 +198,11 @@ def build_and_run(mvs_list):
     ave_loss = 0.0
     ave_per1 = 0.0
     ave_per3 = 0.0
-    ave_mae_abs = 0.0
+    ave_mae_abs = 0.0  # in dataset native unit (DTU: mm, others often: m)
+
+    # unit conversion for absolute MAE display
+    unit_to_m = 0.001 if FLAGS.validate_set == 'dtu' else 1.0
+    unit_label = 'mm' if FLAGS.validate_set == 'dtu' else 'm'
 
     with tf.Session(config=config) as sess:
         sess.run(init_op)
@@ -206,30 +221,38 @@ def build_and_run(mvs_list):
                 print('End of dataset')
                 break
             duration = time.time() - start_time
-            print(Notify.INFO, 'val %d: loss=%.3f, <1=%.3f, <3=%.3f, mae=%.3f m (%.3f s/step)' % (step, out_loss, out_less_one, out_less_three, out_mae_abs, duration), Notify.ENDC)
+            # convert per-step MAE to display unit
+            out_mae_display = out_mae_abs * (1000.0 if FLAGS.validate_set == 'dtu' else 1.0)
+            print(Notify.INFO, 'val %d: loss=%.3f, <1=%.3f, <3=%.3f, mae=%.3f %s (%.3f s/step)' % (step, out_loss, out_less_one, out_less_three, out_mae_display, unit_label, duration), Notify.ENDC)
             ave_loss += out_loss
             ave_per1 += out_less_one
             ave_per3 += out_less_three
             ave_mae_abs += out_mae_abs
 
-        n = float(len(mvs_list))
-        ave_loss /= n
-        ave_per1 /= n
-        ave_per3 /= n
-        ave_mae_abs /= n
-        print('ave_loss', ave_loss)
-        print('ave_per1', ave_per1)
-        print('ave_per3', ave_per3)
-        print('ave_mae_meters', ave_mae_abs)
-        print('ave_mae_millimeters', ave_mae_abs * 1000.0)
+    n = float(len(mvs_list))
+    ave_loss /= n
+    ave_per1 /= n
+    ave_per3 /= n
+    ave_mae_abs /= n  # still in dataset unit
 
-        # ensure output dir
-        vr_dir = os.path.dirname(FLAGS.validation_result_path)
-        if vr_dir and not os.path.exists(vr_dir):
-            os.makedirs(vr_dir, exist_ok=True)
-        with open(FLAGS.validation_result_path, 'a') as f:
-            f.write('ckpt %d | L1(step)=%.6f, <1=%.6f, <3=%.6f, MAE(m)=%.6f, MAE(mm)=%.2f\n' % (
-                int(FLAGS.ckpt_step), float(ave_loss), float(ave_per1), float(ave_per3), float(ave_mae_abs), float(ave_mae_abs*1000.0)))
+    # Convert dataset-native unit to meters/mm for reporting
+    # DTU depth/interval are in millimeters; BlendedMVS/ETH3D are typically in meters.
+    ave_mae_meters = ave_mae_abs * unit_to_m
+    ave_mae_millimeters = ave_mae_meters * 1000.0
+
+    print('ave_loss', ave_loss)
+    print('ave_per1', ave_per1)
+    print('ave_per3', ave_per3)
+    print('ave_mae_meters', ave_mae_meters)
+    print('ave_mae_millimeters', ave_mae_millimeters)
+
+    # ensure output dir
+    vr_dir = os.path.dirname(FLAGS.validation_result_path)
+    if vr_dir and not os.path.exists(vr_dir):
+        os.makedirs(vr_dir, exist_ok=True)
+    with open(FLAGS.validation_result_path, 'a') as f:
+        f.write('ckpt %d | L1(step)=%.6f, <1=%.6f, <3=%.6f, MAE(m)=%.6f, MAE(mm)=%.2f\n' % (
+            int(FLAGS.ckpt_step), float(ave_loss), float(ave_per1), float(ave_per3), float(ave_mae_meters), float(ave_mae_millimeters)))
 
 # -----------------------------
 # Main
